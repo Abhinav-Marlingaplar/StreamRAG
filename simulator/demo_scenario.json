@@ -1,0 +1,50 @@
+[
+	{
+		"event_id": "evt-1024-01",
+		"event_type": "incident_created",
+		"entity_id": "INC-1024",
+		"event_time": "2026-09-26T10:10:00Z",
+		"source": "incident-system",
+		"payload": {
+			"status": "investigating",
+			"description": "Elevated API error rate detected for checkout service."
+		}
+	},
+	{
+		"event_id": "evt-1024-02",
+		"event_type": "incident_updated",
+		"entity_id": "INC-1024",
+		"event_time": "2026-09-26T10:30:00Z",
+		"source": "incident-system",
+		"payload": {
+			"status": "root_cause_identified",
+			"root_cause": "database connection pool exhaustion",
+			"description": "Database connection saturation traced to a burst of long-running queries."
+		}
+	},
+	{
+		"event_id": "evt-1024-03",
+		"event_type": "incident_updated",
+		"entity_id": "INC-1024",
+		"event_time": "2026-09-26T10:45:00Z",
+		"source": "incident-system",
+		"payload": {
+			"status": "mitigated",
+			"mitigation": "Increased pool size and restarted overloaded API pods.",
+			"description": "Error rates are declining and latency is returning to baseline."
+		}
+	},
+	{
+		"event_id": "evt-1024-04",
+		"event_type": "incident_resolved",
+		"entity_id": "INC-1024",
+		"event_time": "2026-09-26T11:00:00Z",
+		"source": "incident-system",
+		"payload": {
+			"status": "resolved",
+			"root_cause": "database connection pool exhaustion",
+			"mitigation": "Pool settings tuned and dashboard alert thresholds adjusted.",
+			"description": "Incident closed after 15 minutes of stable system behavior."
+		}
+	}
+]

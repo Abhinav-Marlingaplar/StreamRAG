@@ -1,0 +1,10 @@
+SQLAlchemy==2.1.1
+psycopg2-binary==2.9.13
+pgvector
+sentence-transformers
+fastapi==0.142.2
+uvicorn==0.54.0
+bcrypt==5.0.0
+PyJWT==2.15.1
+groq==1.7.0
+python-dotenv==1.1.1

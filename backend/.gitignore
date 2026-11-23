@@ -1,0 +1,17 @@
+# Python virtual environments and caches
+.venv/
+__pycache__/
+*.pyc
+
+# Build outputs
+build/
+dist/
+
+# Environment files (track examples)
+.env
+!.env.example
+
+# IDE and OS artifacts
+.vscode/
+.idea/
+.DS_Store
