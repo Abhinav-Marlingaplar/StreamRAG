@@ -49,6 +49,8 @@ def _resolve_embedding_model_name() -> str:
 
 class EventPayload(BaseModel):
 	status: str
+	service: str | None = None
+	severity: str | None = None
 	root_cause: str | None = None
 	mitigation: str | None = None
 	description: str | None = None
@@ -79,6 +81,10 @@ def _model_to_dict(model: BaseModel) -> dict[str, Any]:
 
 def _build_content(entity_id: str, payload: EventPayload) -> str:
 	parts = [f"{entity_id} status is {payload.status.replace('_', ' ')}."]
+	if payload.service:
+		parts.append(f"Service: {payload.service}.")
+	if payload.severity:
+		parts.append(f"Severity: {payload.severity}.")
 	if payload.root_cause:
 		parts.append(f"Root cause: {payload.root_cause}.")
 	if payload.mitigation:

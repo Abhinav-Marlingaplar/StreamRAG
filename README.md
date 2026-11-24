@@ -16,6 +16,7 @@ The product strategy is intentionally split into two parts:
 - Temporal-Aware Adaptive Retrieval (TAR) with dynamic gating on top of pgvector
 - RAG answers with citations and historical “as-of” correctness
 - Practical, reproducible local setup for reviewers and users
+- Cohesive three-surface UX: Overview, Intelligence, and Event Simulator
 
 ---
 
@@ -95,6 +96,21 @@ Use the simulator API from the app UI or run:
 ```bash
 cd simulator
 python producer.py
+```
+
+For interview demos (stream one event every few seconds from a larger CSV dataset):
+
+```bash
+cd simulator
+python producer.py --mode csv --interval-seconds 2.5 --csv-path operational_events.csv
+```
+
+`operational_events.csv` includes 100 realistic incident lifecycles (300 events total).
+
+To continuously replay the dataset:
+
+```bash
+python producer.py --mode csv --interval-seconds 2.5 --csv-path operational_events.csv --loop
 ```
 
 ---

@@ -2,26 +2,20 @@ import { useMemo } from "react";
 import { BrowserRouter, Link, NavLink, Navigate, Route, Routes, useNavigate } from "react-router-dom";
 import ProtectedRoute from "./components/ProtectedRoute";
 import { clearAuthToken } from "./lib/api";
-import Chat from "./pages/Chat";
-import Dashboard from "./pages/Dashboard";
-import Events from "./pages/Events";
+import Intelligence from "./pages/Intelligence";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
-import Monitoring from "./pages/Monitoring";
+import Overview from "./pages/Overview";
 import Register from "./pages/Register";
 import Simulator from "./pages/Simulator";
-import Timeline from "./pages/Timeline";
 
 function Layout() {
 	const navigate = useNavigate();
 	const navItems = useMemo(
 		() => [
-			{ label: "Dashboard", to: "/app/dashboard" },
-			{ label: "Chat", to: "/app/chat" },
-			{ label: "Events", to: "/app/events" },
-			{ label: "Timeline", to: "/app/timeline/INC-1024" },
-			{ label: "Simulator", to: "/app/simulator" },
-			{ label: "Monitoring", to: "/app/monitoring" },
+			{ label: "Overview", to: "/app/overview" },
+			{ label: "Intelligence", to: "/app/intelligence" },
+			{ label: "Event Simulator", to: "/app/simulator" },
 		],
 		[]
 	);
@@ -66,34 +60,22 @@ function Layout() {
 			<main className="app-main app-main-wide">
 				<Routes>
 					<Route
-						path="/dashboard"
-						element={<Dashboard />}
+						path="/overview"
+						element={<Overview />}
 					/>
 					<Route
-						path="/chat"
-						element={<Chat />}
-					/>
-					<Route
-						path="/events"
-						element={<Events />}
-					/>
-					<Route
-						path="/timeline/:entityId"
-						element={<Timeline />}
+						path="/intelligence"
+						element={<Intelligence />}
 					/>
 					<Route
 						path="/simulator"
 						element={<Simulator />}
 					/>
 					<Route
-						path="/monitoring"
-						element={<Monitoring />}
-					/>
-					<Route
 						path="*"
 						element={
 							<Navigate
-								to="/app/dashboard"
+								to="/app/overview"
 								replace
 							/>
 						}

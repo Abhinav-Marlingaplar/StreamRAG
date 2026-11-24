@@ -14,8 +14,10 @@ export default function Dashboard() {
 	const [loading, setLoading] = useState(true);
 	const [error, setError] = useState("");
 
-	const loadData = async () => {
-		setLoading(true);
+	const loadData = async ({ silent = false } = {}) => {
+		if (!silent) {
+			setLoading(true);
+		}
 		setError("");
 		try {
 			const [statusData, eventsData] = await Promise.all([fetchStatus(), fetchRecentEvents(15)]);
@@ -30,7 +32,7 @@ export default function Dashboard() {
 
 	useEffect(() => {
 		loadData();
-		const id = setInterval(loadData, 8000);
+		const id = setInterval(() => loadData({ silent: true }), 2500);
 		return () => clearInterval(id);
 	}, []);
 
@@ -48,6 +50,8 @@ export default function Dashboard() {
 			{ label: "LLM latency", value: formatMetric(status.avg_llm_latency_ms, " ms") },
 		];
 	}, [status]);
+
+	const liveFeed = useMemo(() => events.slice(0, 8), [events]);
 
 	return (
 		<div className="page-stack">
@@ -81,10 +85,11 @@ export default function Dashboard() {
 			</section>
 
 			<section className="panel stack">
-				<h2>Recent activity</h2>
+				<h2>Live ingestion feed</h2>
+				<p className="caption">Auto-refreshing every 2.5s · showing latest pipeline activity.</p>
 				{loading && events.length === 0 && <p className="muted">Loading event feed...</p>}
-				{!loading && events.length === 0 && <p className="muted">No events received yet.</p>}
-				{events.map((event, index) => (
+				{!loading && liveFeed.length === 0 && <p className="muted">No events received yet.</p>}
+				{liveFeed.map((event, index) => (
 					<article
 						className="event-row"
 						key={`${event.kind}-${event.event_id || event.knowledge_version_id || index}`}
@@ -93,9 +98,13 @@ export default function Dashboard() {
 							<p>
 								<strong>{event.entity_id}</strong> · {event.kind}
 							</p>
-							<p className="caption">{event.event_type || event.status || "unknown"}</p>
+							<p className="caption">{event.event_type || event.status || "unknown"} · source={event.source}</p>
+							<p className="caption">event_time: {event.event_time || event.timestamp}</p>
 						</div>
-						<p className="caption">{event.timestamp}</p>
+						<div className="stack">
+							<p className="caption">{event.timestamp}</p>
+							<span className="chip">{event.ingestion_status || "observed"}</span>
+						</div>
 					</article>
 				))}
 			</section>

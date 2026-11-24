@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -8,15 +8,6 @@ gsap.registerPlugin(ScrollTrigger);
 const githubUrl = import.meta.env.VITE_GITHUB_URL || "https://github.com/your-org/streamrag";
 const demoVideoUrl = import.meta.env.VITE_DEMO_VIDEO_URL || "";
 
-const featureCards = [
-	{ title: "Real-time Kafka ingestion", text: "Consume incident events continuously and keep retrieval state live." },
-	{ title: "Temporal versioning", text: "Store validity windows for every update, not just latest state." },
-	{ title: "Historical retrieval", text: "Answer 'as-of' questions with deterministic timeline filtering." },
-	{ title: "Semantic search", text: "pgvector retrieval narrows evidence before temporal validation." },
-	{ title: "Evidence-grounded generation", text: "LLM synthesizes responses strictly from selected citations." },
-	{ title: "Out-of-order safety", text: "Late events are inserted correctly without corrupting current truth." },
-];
-
 const setupCommands = [
 	"docker compose -f infrastructure/docker-compose.yml up -d",
 	"cd backend && pip install -r requirements.txt && alembic upgrade head",
@@ -25,97 +16,69 @@ const setupCommands = [
 	"cd frontend && npm install && npm run dev",
 ];
 
-function SetupCommand({ command, index }) {
-	const [copied, setCopied] = useState(false);
-
-	const copyCommand = async () => {
-		try {
-			await navigator.clipboard.writeText(command);
-			setCopied(true);
-			setTimeout(() => setCopied(false), 1200);
-		} catch {
-			setCopied(false);
-		}
-	};
-
-	return (
-		<div className="setup-row">
-			<div>
-				<p className="caption">Step {index + 1}</p>
-				<code>{command}</code>
-			</div>
-			<button
-				className="btn btn-ghost"
-				onClick={copyCommand}
-				type="button"
-			>
-				{copied ? "Copied" : "Copy"}
-			</button>
-		</div>
-	);
-}
-
 export default function Landing() {
-	const pageRef = useRef(null);
+	const rootRef = useRef(null);
 	const year = useMemo(() => new Date().getFullYear(), []);
 
 	useEffect(() => {
+		const prefersReduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+		if (prefersReduced) {
+			return undefined;
+		}
 		const ctx = gsap.context(() => {
-			gsap.from(".landing-animate-in", {
-				opacity: 0,
+			gsap.from(".hero-reveal", {
 				y: 18,
-				duration: 0.7,
+				opacity: 0,
+				duration: 0.6,
 				stagger: 0.08,
 				ease: "power2.out",
 			});
-
-			gsap.from(".reveal-up", {
-				scrollTrigger: {
-					trigger: ".reveal-root",
-					start: "top 80%",
-				},
-				opacity: 0,
-				y: 20,
-				duration: 0.65,
-				stagger: 0.07,
-				ease: "power2.out",
+			gsap.utils.toArray(".scroll-reveal").forEach((item) => {
+				gsap.from(item, {
+					y: 20,
+					opacity: 0,
+					duration: 0.55,
+					ease: "power2.out",
+					scrollTrigger: {
+						trigger: item,
+						start: "top 84%",
+					},
+				});
 			});
-		}, pageRef);
-
+		}, rootRef);
 		return () => ctx.revert();
 	}, []);
 
 	return (
 		<div
-			className="landing-page"
-			ref={pageRef}
+			className="landing-root"
+			ref={rootRef}
 		>
-			<header className="landing-nav">
+			<header className="landing-topbar">
 				<div className="brand-lockup">
 					<span className="brand-dot" />
 					<div>
 						<p className="brand-title">StreamRAG</p>
-						<p className="brand-subtitle">Temporal RAG Infrastructure</p>
+						<p className="brand-subtitle">Temporal Incident Intelligence</p>
 					</div>
 				</div>
-				<div className="landing-nav-links">
+				<nav className="landing-links">
+					<a href="#capabilities">Capabilities</a>
 					<a href="#architecture">Architecture</a>
-					<a href="#workflow">Workflow</a>
 					<a href="#setup">Setup</a>
-					<Link to="/login">Sign in</Link>
-				</div>
+					<Link to="/login">App login</Link>
+				</nav>
 			</header>
 
-			<section className="hero-shell">
+			<section className="landing-hero">
 				<div className="hero-copy">
-					<p className="chip landing-animate-in">Local-first runtime · public showcase</p>
-					<h1 className="landing-animate-in">
-						Real-time incident intelligence with <span>temporal certainty.</span>
-					</h1>
-					<p className="hero-lead landing-animate-in">
-						StreamRAG solves the core failure of static RAG systems: changing truth over time. Ingest events from Kafka, version knowledge deterministically, and answer current and historical questions with evidence-backed citations.
+					<p className="chip hero-reveal">Real-time temporal retrieval for live operations</p>
+					<h1 className="hero-reveal">Ask what is true now — and what was true before.</h1>
+					<p className="hero-reveal">
+						StreamRAG ingests operational events from Kafka, preserves temporal truth in PostgreSQL, and answers
+						questions with TAR-ranked evidence and citations.
 					</p>
-					<div className="hero-actions landing-animate-in">
+					<div className="hero-actions hero-reveal">
 						<a
 							className="btn btn-primary"
 							href={githubUrl}
@@ -124,105 +87,77 @@ export default function Landing() {
 						>
 							View GitHub
 						</a>
-						<a
+						<Link
 							className="btn btn-ghost"
-							href="#product-preview"
+							to="/login"
 						>
-							Explore Demo
-						</a>
+							Open app
+						</Link>
 					</div>
 				</div>
-				<div className="hero-visual landing-animate-in">
-					<div className="pipeline-node">Kafka Events</div>
-					<div className="pipeline-arrow">→</div>
-					<div className="pipeline-node">Temporal Processor</div>
-					<div className="pipeline-arrow">→</div>
-					<div className="pipeline-node">RAG Answer + Citations</div>
+				<div className="hero-visual hero-reveal">
+					<div className="pipeline-rail">
+						<div>CSV / Simulator</div>
+						<span>→</span>
+						<div>Kafka</div>
+						<span>→</span>
+						<div>Consumer</div>
+						<span>→</span>
+						<div>Temporal Store + pgvector</div>
+						<span>→</span>
+						<div>TAR Query Engine</div>
+					</div>
 				</div>
 			</section>
 
-			<div className="section-divider" />
-
-			<section className="section-grid reveal-root">
-				<article className="panel reveal-up">
-					<h2>Why static RAG breaks</h2>
+			<section className="editorial-block scroll-reveal">
+				<div>
+					<h2>Why this matters</h2>
 					<p>
-						Traditional RAG indexes snapshots. But incident truth changes minute-by-minute. A naive retrieval system often returns outdated information because it cannot reason about <strong>validity over time</strong>.
+						Operations truth evolves constantly. Static RAG returns stale answers when incidents change quickly.
+						StreamRAG keeps timeline-aware versions and uses temporal-aware retrieval to choose evidence relevant to
+						query time.
 					</p>
-				</article>
-				<article className="panel reveal-up">
-					<h2>How StreamRAG fixes it</h2>
+				</div>
+				<div>
+					<h2>How StreamRAG works</h2>
 					<p>
-						Every update is versioned with <code>valid_from</code> and <code>valid_to</code>. Retrieval is semantically ranked, then temporally filtered before generation. The LLM never guesses temporal state.
+						Events are ingested one-by-one, versioned with validity windows, embedded, and retrieved with adaptive
+						TAR scoring that blends semantic relevance and recency decay.
 					</p>
-				</article>
-			</section>
-
-			<section className="feature-grid-large">
-				{featureCards.map((feature) => (
-					<article
-						className="panel reveal-up"
-						key={feature.title}
-					>
-						<h3>{feature.title}</h3>
-						<p>{feature.text}</p>
-					</article>
-				))}
+				</div>
 			</section>
 
 			<section
-				className="panel"
+				className="capability-layout scroll-reveal"
+				id="capabilities"
+			>
+				<h2>Core capabilities</h2>
+				<div className="capability-rows">
+					<p>Real-time Kafka ingestion with idempotent processing</p>
+					<p>Temporal versioning with historical as-of query support</p>
+					<p>Adaptive TAR retrieval tiers and transparent evidence scoring</p>
+					<p>Incident timeline inspection and citation-grounded responses</p>
+					<p>CSV-based simulator for deterministic demo playback</p>
+				</div>
+			</section>
+
+			<section
+				className="architecture-band scroll-reveal"
 				id="architecture"
 			>
-				<h2>Architecture</h2>
-				<div className="architecture-flow">
-					<div>Simulator / Producers</div>
-					<span>→</span>
-					<div>Kafka Topic</div>
-					<span>→</span>
-					<div>FastAPI Worker</div>
-					<span>→</span>
-					<div>PostgreSQL + pgvector</div>
-					<span>→</span>
-					<div>Temporal Query + LLM</div>
-				</div>
-				<p className="muted">
-					Local runtime only: frontend, backend, worker, Kafka, and PostgreSQL run on your machine. Public deployment is landing page only.
-				</p>
-			</section>
-
-			<section
-				className="panel"
-				id="workflow"
-			>
-				<h2>Event-to-answer workflow</h2>
-				<ol className="workflow-list">
-					<li>Ingest event with event-time and payload.</li>
-					<li>Apply idempotency and temporal version insertion.</li>
-					<li>Store embedding for semantic candidate retrieval.</li>
-					<li>Run query embedding and vector search.</li>
-					<li>Apply deterministic temporal validity rule.</li>
-					<li>Generate answer from valid evidence only.</li>
+				<h2>Technical architecture</h2>
+				<p>React + Vite frontend, FastAPI APIs, aiokafka worker, PostgreSQL + pgvector, and Groq-backed LLM generation.</p>
+				<ol>
+					<li>Publish operational events into Kafka topic `operations-events`.</li>
+					<li>Validate, version, embed, and index through the consumer pipeline.</li>
+					<li>Run temporal-aware retrieval and answer generation with citations.</li>
 				</ol>
 			</section>
 
-			<section
-				className="panel"
-				id="product-preview"
-			>
+			<section className="preview-layout scroll-reveal">
 				<h2>Product preview</h2>
-				<div className="preview-grid">
-					<div className="preview-card">Dashboard + monitoring</div>
-					<div className="preview-card">Query chat + citations</div>
-					<div className="preview-card">Live events + filters</div>
-					<div className="preview-card">Timeline + validity windows</div>
-					<div className="preview-card">Simulator controls</div>
-					<div className="preview-card">Status + latency metrics</div>
-				</div>
-			</section>
-
-			<section className="panel">
-				<h2>Demo video</h2>
+				<p>Overview tracks live ingestion, Intelligence unifies querying + timelines, Event Simulator drives deterministic demo streams.</p>
 				{demoVideoUrl ? (
 					<div className="video-frame">
 						<iframe
@@ -235,61 +170,47 @@ export default function Landing() {
 				) : (
 					<div className="video-placeholder">
 						<p>Demo video placeholder</p>
-						<p className="muted">
-							Set <code>VITE_DEMO_VIDEO_URL</code> to embed your final walkthrough.
+						<p className="caption">
+							Set <code>VITE_DEMO_VIDEO_URL</code> to embed your walkthrough.
 						</p>
 					</div>
 				)}
 			</section>
 
 			<section
-				className="panel"
+				className="setup-layout scroll-reveal"
 				id="setup"
 			>
-				<h2>Run locally in minutes</h2>
+				<h2>Run locally</h2>
 				<div className="setup-list">
 					{setupCommands.map((command, index) => (
-						<SetupCommand
-							command={command}
-							index={index}
+						<div
+							className="setup-line"
 							key={command}
-						/>
+						>
+							<span className="caption">Step {index + 1}</span>
+							<code>{command}</code>
+						</div>
 					))}
 				</div>
-			</section>
-
-			<section className="section-grid">
-				<article className="panel">
-					<h2>Technical details</h2>
-					<p>
-						StreamRAG enforces temporal correctness with validity windows, semantic candidate retrieval with pgvector, and citations that map to concrete knowledge versions.
-					</p>
-				</article>
-				<article className="panel">
-					<h2>Open project</h2>
-					<p>Clone, run locally, and inspect every layer from ingestion to RAG response.</p>
-					<a
-						className="btn btn-primary"
-						href={githubUrl}
-						rel="noreferrer"
-						target="_blank"
-					>
-						Open GitHub
-					</a>
-				</article>
 			</section>
 
 			<footer className="landing-footer">
 				<div>
 					<p className="brand-title">StreamRAG</p>
-					<p className="muted">Real-time temporal RAG for incident knowledge.</p>
+					<p className="muted">Local-first temporal RAG for operational incidents.</p>
 				</div>
-				<div className="footer-links">
-					<a href={githubUrl}>GitHub</a>
-					<a href="#architecture">Architecture</a>
-					<a href="#setup">Setup</a>
+				<div className="row">
+					<a
+						href={githubUrl}
+						rel="noreferrer"
+						target="_blank"
+					>
+						GitHub
+					</a>
+					<Link to="/login">Open app</Link>
 				</div>
-				<p className="muted">© {year} StreamRAG</p>
+				<p className="caption">© {year} StreamRAG</p>
 			</footer>
 		</div>
 	);

@@ -1,66 +1,91 @@
-import { useState } from "react";
-import { publishCustomEvent, publishDemoEvents } from "../lib/api";
-
-const presets = [
-	{ value: "incident_created", label: "incident_created" },
-	{ value: "incident_updated", label: "incident_updated" },
-	{ value: "incident_resolved", label: "incident_resolved" },
-];
+import { useEffect, useState } from "react";
+import {
+	fetchSimulatorStreamStatus,
+	fetchStatus,
+	publishDemoEvents,
+	startSimulatorStream,
+	stopSimulatorStream,
+} from "../lib/api";
 
 export default function Simulator() {
-	const [form, setForm] = useState({
-		entity_id: "INC-2042",
-		event_type: "incident_created",
-		status: "investigating",
-		root_cause: "",
-		mitigation: "",
-		description: "Placeholder incident description",
-		event_time: "",
-		source: "simulator",
-	});
-	const [loadingDemo, setLoadingDemo] = useState(false);
-	const [loadingCustom, setLoadingCustom] = useState(false);
+	const [status, setStatus] = useState(null);
+	const [pipeline, setPipeline] = useState(null);
+	const [intervalSeconds, setIntervalSeconds] = useState(2.5);
+	const [loop, setLoop] = useState(true);
+	const [maxEvents, setMaxEvents] = useState("");
 	const [error, setError] = useState("");
 	const [success, setSuccess] = useState("");
+	const [loadingAction, setLoadingAction] = useState(false);
 
-	const runDemoScenario = async () => {
-		setLoadingDemo(true);
-		setError("");
-		setSuccess("");
+	const load = async ({ silent = false } = {}) => {
+		if (!silent) {
+			setError("");
+		}
 		try {
-			const response = await publishDemoEvents(true);
-			setSuccess(`Published demo scenario: ${response.published_count} events.`);
+			const [stream, pipelineStatus] = await Promise.all([fetchSimulatorStreamStatus(), fetchStatus()]);
+			setStatus(stream);
+			setPipeline(pipelineStatus);
 		} catch (err) {
-			setError(err.response?.data?.detail || "Failed to publish demo scenario.");
-		} finally {
-			setLoadingDemo(false);
+			if (!silent) {
+				setError(err.response?.data?.detail || "Unable to load simulator status.");
+			}
 		}
 	};
 
-	const publishCustom = async (event) => {
-		event.preventDefault();
-		setLoadingCustom(true);
+	useEffect(() => {
+		load();
+		const id = setInterval(() => load({ silent: true }), 2000);
+		return () => clearInterval(id);
+	}, []);
+
+	const startStreaming = async () => {
+		setLoadingAction(true);
 		setError("");
 		setSuccess("");
 		try {
 			const payload = {
-				entity_id: form.entity_id.trim().toUpperCase(),
-				event_type: form.event_type,
-				event_time: form.event_time || null,
-				source: form.source || "simulator",
-				payload: {
-					status: form.status,
-					root_cause: form.root_cause || undefined,
-					mitigation: form.mitigation || undefined,
-					description: form.description || undefined,
-				},
+				source_mode: "csv",
+				interval_seconds: Number(intervalSeconds) || 2.5,
+				loop,
+				max_events: maxEvents ? Number(maxEvents) : null,
 			};
-			await publishCustomEvent(payload);
-			setSuccess("Custom event published to Kafka.");
+			const response = await startSimulatorStream(payload);
+			setSuccess(response.detail);
+			await load({ silent: true });
 		} catch (err) {
-			setError(err.response?.data?.detail || "Failed to publish custom event.");
+			setError(err.response?.data?.detail || "Failed to start simulator stream.");
 		} finally {
-			setLoadingCustom(false);
+			setLoadingAction(false);
+		}
+	};
+
+	const stopStreaming = async () => {
+		setLoadingAction(true);
+		setError("");
+		setSuccess("");
+		try {
+			const response = await stopSimulatorStream();
+			setSuccess(response.detail);
+			await load({ silent: true });
+		} catch (err) {
+			setError(err.response?.data?.detail || "Failed to stop simulator stream.");
+		} finally {
+			setLoadingAction(false);
+		}
+	};
+
+	const runJsonDemoBurst = async () => {
+		setLoadingAction(true);
+		setError("");
+		setSuccess("");
+		try {
+			const response = await publishDemoEvents(true);
+			setSuccess(`Published ${response.published_count} demo JSON events.`);
+			await load({ silent: true });
+		} catch (err) {
+			setError(err.response?.data?.detail || "Failed to run demo publish.");
+		} finally {
+			setLoadingAction(false);
 		}
 	};
 
@@ -68,125 +93,110 @@ export default function Simulator() {
 		<div className="page-stack">
 			<section className="page-header">
 				<h1>Event Simulator</h1>
-				<p className="muted">Publish deterministic demo scenarios or custom events, including out-of-order timestamps.</p>
+				<p className="muted">
+					Stream CSV-backed operational events into Kafka, monitor ingestion flow, and replay for interview demos.
+				</p>
 			</section>
 
-			<section className="panel row-between">
-				<div>
-					<h2>Demo scenario</h2>
-					<p className="muted">Publishes the repository scenario sequence through the same Kafka ingestion path.</p>
+			{error && <p className="error-text">{error}</p>}
+			{success && <p className="success-text">{success}</p>}
+
+			<section className="surface stack-gap">
+				<div className="row-between">
+					<h2>Streaming controls</h2>
+					<span className={`chip ${status?.running ? "chip-live" : ""}`}>{status?.running ? "Live" : "Stopped"}</span>
 				</div>
-				<button
-					className="btn btn-primary"
-					disabled={loadingDemo}
-					onClick={runDemoScenario}
-					type="button"
-				>
-					{loadingDemo ? "Publishing..." : "Run demo sequence"}
-				</button>
+				<div className="sim-grid">
+					<label className="field">
+						<span className="field-label">Publishing interval (seconds)</span>
+						<input
+							className="input"
+							min={0}
+							onChange={(e) => setIntervalSeconds(e.target.value)}
+							step="0.5"
+							type="number"
+							value={intervalSeconds}
+						/>
+					</label>
+					<label className="field">
+						<span className="field-label">Max events (optional)</span>
+						<input
+							className="input"
+							min={1}
+							onChange={(e) => setMaxEvents(e.target.value)}
+							placeholder="Unlimited"
+							type="number"
+							value={maxEvents}
+						/>
+					</label>
+					<label className="field field-toggle">
+						<input
+							checked={loop}
+							onChange={(e) => setLoop(e.target.checked)}
+							type="checkbox"
+						/>
+						<span>Replay when CSV ends</span>
+					</label>
+				</div>
+				<div className="row">
+					<button
+						className="btn btn-primary"
+						disabled={loadingAction || status?.running}
+						onClick={startStreaming}
+						type="button"
+					>
+						Start CSV stream
+					</button>
+					<button
+						className="btn btn-ghost"
+						disabled={loadingAction || !status?.running}
+						onClick={stopStreaming}
+						type="button"
+					>
+						Stop stream
+					</button>
+					<button
+						className="btn btn-ghost"
+						disabled={loadingAction}
+						onClick={runJsonDemoBurst}
+						type="button"
+					>
+						Run JSON demo burst
+					</button>
+				</div>
 			</section>
 
-			<section className="panel">
-				<h2>Custom event</h2>
-				<form
-					className="form-grid"
-					onSubmit={publishCustom}
-				>
-					<label className="field">
-						<span className="field-label">Entity ID</span>
-						<input
-							className="input"
-							onChange={(e) => setForm((prev) => ({ ...prev, entity_id: e.target.value }))}
-							required
-							type="text"
-							value={form.entity_id}
-						/>
-					</label>
-					<label className="field">
-						<span className="field-label">Event Type</span>
-						<select
-							className="input"
-							onChange={(e) => setForm((prev) => ({ ...prev, event_type: e.target.value }))}
-							value={form.event_type}
-						>
-							{presets.map((item) => (
-								<option
-									key={item.value}
-									value={item.value}
-								>
-									{item.label}
-								</option>
-							))}
-						</select>
-					</label>
-					<label className="field">
-						<span className="field-label">Status</span>
-						<input
-							className="input"
-							onChange={(e) => setForm((prev) => ({ ...prev, status: e.target.value }))}
-							required
-							type="text"
-							value={form.status}
-						/>
-					</label>
-					<label className="field">
-						<span className="field-label">Event Time (optional)</span>
-						<input
-							className="input"
-							onChange={(e) => setForm((prev) => ({ ...prev, event_time: e.target.value }))}
-							placeholder="2026-09-26T10:30:00Z"
-							type="text"
-							value={form.event_time}
-						/>
-					</label>
-					<label className="field full">
-						<span className="field-label">Description</span>
-						<textarea
-							className="input textarea"
-							onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
-							rows={3}
-							value={form.description}
-						/>
-					</label>
-					<label className="field">
-						<span className="field-label">Root Cause</span>
-						<input
-							className="input"
-							onChange={(e) => setForm((prev) => ({ ...prev, root_cause: e.target.value }))}
-							type="text"
-							value={form.root_cause}
-						/>
-					</label>
-					<label className="field">
-						<span className="field-label">Mitigation</span>
-						<input
-							className="input"
-							onChange={(e) => setForm((prev) => ({ ...prev, mitigation: e.target.value }))}
-							type="text"
-							value={form.mitigation}
-						/>
-					</label>
-					<label className="field">
-						<span className="field-label">Source</span>
-						<input
-							className="input"
-							onChange={(e) => setForm((prev) => ({ ...prev, source: e.target.value }))}
-							type="text"
-							value={form.source}
-						/>
-					</label>
-					<div className="field full">
-						<button
-							className="btn btn-primary"
-							disabled={loadingCustom}
-							type="submit"
-						>
-							{loadingCustom ? "Publishing..." : "Publish custom event"}
-						</button>
-					</div>
-				</form>
-				{error && <p className="error-text">{error}</p>}
-				{success && <p className="success-text">{success}</p>}
+			<section className="metrics-strip">
+				<article className="metric-item">
+					<p className="caption">Published (current stream)</p>
+					<p className="metric-value">{status?.published_count ?? 0}</p>
+				</article>
+				<article className="metric-item">
+					<p className="caption">Failed (current stream)</p>
+					<p className="metric-value">{status?.failed_count ?? 0}</p>
+				</article>
+				<article className="metric-item">
+					<p className="caption">Processed (consumer)</p>
+					<p className="metric-value">{pipeline?.events_processed ?? 0}</p>
+				</article>
+				<article className="metric-item">
+					<p className="caption">Ingestion failures</p>
+					<p className="metric-value">{pipeline?.ingestion_failures ?? 0}</p>
+				</article>
+				<article className="metric-item">
+					<p className="caption">Last event id</p>
+					<p className="metric-value metric-small">{status?.last_event_id || "n/a"}</p>
+				</article>
+			</section>
+
+			<section className="surface stack-gap">
+				<h2>Live status</h2>
+				<p className="caption">CSV source: {status?.source_path || "simulator/operational_events.csv"}</p>
+				<p className="caption">
+					interval={status?.interval_seconds ?? intervalSeconds}s · loop={String(status?.loop ?? loop)} · max_events=
+					{status?.max_events ?? "none"}
+				</p>
+				{status?.last_error && <p className="error-text">Last stream error: {status.last_error}</p>}
 			</section>
 		</div>
 	);

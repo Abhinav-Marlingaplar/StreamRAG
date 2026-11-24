@@ -15,7 +15,7 @@ export default function Login() {
 		try {
 			const data = await loginUser(form);
 			setAuthToken(data.access_token);
-			navigate("/app/dashboard");
+			navigate("/app/overview");
 		} catch (err) {
 			setError(err.response?.data?.detail || "Login failed. Check backend connectivity.");
 		} finally {

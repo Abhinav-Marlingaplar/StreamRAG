@@ -17,6 +17,7 @@ router = APIRouter(prefix="/api", tags=["status"])
 METRIC_EVENTS_PROCESSED = "events_processed"
 METRIC_INGESTION_FAILURES = "ingestion_failures"
 METRIC_KAFKA_CONSUMER_STATUS = "kafka_consumer_status"
+METRIC_SIMULATOR_PUBLISHED = "simulator_published"
 
 _query_latency_ms: deque[float] = deque(maxlen=200)
 _retrieval_latency_ms: deque[float] = deque(maxlen=200)
@@ -52,6 +53,10 @@ def increment_events_processed(count: int = 1) -> None:
 
 def increment_ingestion_failures(count: int = 1) -> None:
 	_increment_counter(METRIC_INGESTION_FAILURES, count)
+
+
+def increment_simulator_published(count: int = 1) -> None:
+	_increment_counter(METRIC_SIMULATOR_PUBLISHED, count)
 
 
 def _increment_counter(metric_key: str, count: int) -> None:
@@ -130,6 +135,7 @@ def _avg(values: deque[float]) -> float | None:
 class StatusResponse(BaseModel):
 	kafka_consumer_status: str
 	events_processed: int
+	simulator_published: int
 	indexed_versions_count: int
 	avg_query_latency_ms: float | None
 	ingestion_failures: int
@@ -145,6 +151,7 @@ def get_status(_: str = Depends(require_auth)) -> StatusResponse:
 		return StatusResponse(
 			kafka_consumer_status=_read_metric_text(METRIC_KAFKA_CONSUMER_STATUS, "disconnected"),
 			events_processed=_read_metric_int(METRIC_EVENTS_PROCESSED, 0),
+			simulator_published=_read_metric_int(METRIC_SIMULATOR_PUBLISHED, 0),
 			indexed_versions_count=int(indexed_versions_count),
 			avg_query_latency_ms=_avg(_query_latency_ms),
 			ingestion_failures=_read_metric_int(METRIC_INGESTION_FAILURES, 0),

@@ -75,3 +75,18 @@ export async function publishCustomEvent(event) {
 	});
 	return data;
 }
+
+export async function startSimulatorStream(payload) {
+	const { data } = await api.post("/api/simulator/stream/start", payload);
+	return data;
+}
+
+export async function stopSimulatorStream() {
+	const { data } = await api.post("/api/simulator/stream/stop");
+	return data;
+}
+
+export async function fetchSimulatorStreamStatus() {
+	const { data } = await api.get("/api/simulator/stream/status");
+	return data;
+}
