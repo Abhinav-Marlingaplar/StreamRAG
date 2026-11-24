@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useEffect } from "react";
+import { useSearchParams } from "react-router-dom";
 import { fetchTimeline, queryIncident } from "../lib/api";
 
 function extractEntityId(queryText) {
@@ -7,6 +9,7 @@ function extractEntityId(queryText) {
 }
 
 export default function Intelligence() {
+	const [searchParams] = useSearchParams();
 	const [query, setQuery] = useState("What is the latest status of INC-3001?");
 	const [asOf, setAsOf] = useState("");
 	const [loadingQuery, setLoadingQuery] = useState(false);
@@ -17,6 +20,15 @@ export default function Intelligence() {
 	const [timeline, setTimeline] = useState([]);
 	const [loadingTimeline, setLoadingTimeline] = useState(false);
 	const [timelineError, setTimelineError] = useState("");
+
+	useEffect(() => {
+		const incomingEntity = searchParams.get("entity");
+		if (incomingEntity) {
+			const normalized = incomingEntity.trim().toUpperCase();
+			setTimelineEntity(normalized);
+			loadTimeline(normalized);
+		}
+	}, [searchParams]);
 
 	const payload = useMemo(
 		() => ({
@@ -101,7 +113,17 @@ export default function Intelligence() {
 								}}
 								type="button"
 							>
-								Load historical example
+								Historical example
+							</button>
+							<button
+								className="btn btn-ghost"
+								onClick={() => {
+									setQuery("List the latest mitigation for INC-3008 and summarize impact.");
+									setAsOf("");
+								}}
+								type="button"
+							>
+								Current-state example
 							</button>
 						</div>
 					</form>
@@ -155,7 +177,7 @@ export default function Intelligence() {
 					)}
 				</div>
 
-				<div className="surface stack-gap">
+				<div className="surface stack-gap intelligence-timeline-pane">
 					<div className="row-between">
 						<h2>Timeline inspector</h2>
 						<div className="row">
@@ -178,9 +200,7 @@ export default function Intelligence() {
 
 					{loadingTimeline && <p className="muted">Loading timeline...</p>}
 					{timelineError && <p className="error-text">{timelineError}</p>}
-					{!loadingTimeline && !timelineError && timeline.length === 0 && (
-						<p className="caption">No timeline loaded yet. Enter an incident ID and click Load.</p>
-					)}
+					{!loadingTimeline && !timelineError && timeline.length === 0 && <p className="caption">No timeline loaded yet.</p>}
 
 					<div className="timeline-list">
 						{timeline.map((row) => (

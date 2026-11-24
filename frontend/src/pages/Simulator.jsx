@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
+	fetchRecentEvents,
 	fetchSimulatorStreamStatus,
 	fetchStatus,
 	publishDemoEvents,
@@ -7,9 +8,14 @@ import {
 	stopSimulatorStream,
 } from "../lib/api";
 
+function byMostRecent(a, b) {
+	return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
+}
+
 export default function Simulator() {
 	const [status, setStatus] = useState(null);
 	const [pipeline, setPipeline] = useState(null);
+	const [events, setEvents] = useState([]);
 	const [intervalSeconds, setIntervalSeconds] = useState(2.5);
 	const [loop, setLoop] = useState(true);
 	const [maxEvents, setMaxEvents] = useState("");
@@ -22,9 +28,14 @@ export default function Simulator() {
 			setError("");
 		}
 		try {
-			const [stream, pipelineStatus] = await Promise.all([fetchSimulatorStreamStatus(), fetchStatus()]);
+			const [stream, pipelineStatus, recentEvents] = await Promise.all([
+				fetchSimulatorStreamStatus(),
+				fetchStatus(),
+				fetchRecentEvents(60),
+			]);
 			setStatus(stream);
 			setPipeline(pipelineStatus);
+			setEvents(recentEvents);
 		} catch (err) {
 			if (!silent) {
 				setError(err.response?.data?.detail || "Unable to load simulator status.");
@@ -34,9 +45,16 @@ export default function Simulator() {
 
 	useEffect(() => {
 		load();
-		const id = setInterval(() => load({ silent: true }), 2000);
+		const id = setInterval(() => load({ silent: true }), 2200);
 		return () => clearInterval(id);
 	}, []);
+
+	const recentPublished = useMemo(() => {
+		return events
+			.filter((event) => event.kind === "raw_event" && event.source && event.source.includes("simulator"))
+			.sort(byMostRecent)
+			.slice(0, 10);
+	}, [events]);
 
 	const startStreaming = async () => {
 		setLoadingAction(true);
@@ -93,9 +111,7 @@ export default function Simulator() {
 		<div className="page-stack">
 			<section className="page-header">
 				<h1>Event Simulator</h1>
-				<p className="muted">
-					Stream CSV-backed operational events into Kafka, monitor ingestion flow, and replay for interview demos.
-				</p>
+				<p className="muted">Start a stream, watch incidents publish, and verify consumer processing in real time.</p>
 			</section>
 
 			{error && <p className="error-text">{error}</p>}
@@ -103,8 +119,8 @@ export default function Simulator() {
 
 			<section className="surface stack-gap">
 				<div className="row-between">
-					<h2>Streaming controls</h2>
-					<span className={`chip ${status?.running ? "chip-live" : ""}`}>{status?.running ? "Live" : "Stopped"}</span>
+					<h2>Stream controls</h2>
+					<span className={`chip ${status?.running ? "chip-live" : ""}`}>{status?.running ? "Streaming" : "Stopped"}</span>
 				</div>
 				<div className="sim-grid">
 					<label className="field">
@@ -119,7 +135,7 @@ export default function Simulator() {
 						/>
 					</label>
 					<label className="field">
-						<span className="field-label">Max events (optional)</span>
+						<span className="field-label">Maximum events (optional)</span>
 						<input
 							className="input"
 							min={1}
@@ -135,7 +151,7 @@ export default function Simulator() {
 							onChange={(e) => setLoop(e.target.checked)}
 							type="checkbox"
 						/>
-						<span>Replay when CSV ends</span>
+						<span>Replay CSV after completion</span>
 					</label>
 				</div>
 				<div className="row">
@@ -161,42 +177,56 @@ export default function Simulator() {
 						onClick={runJsonDemoBurst}
 						type="button"
 					>
-						Run JSON demo burst
+						JSON demo burst
 					</button>
 				</div>
 			</section>
 
-			<section className="metrics-strip">
+			<section className="overview-summary">
 				<article className="metric-item">
-					<p className="caption">Published (current stream)</p>
+					<p className="caption">Events published</p>
 					<p className="metric-value">{status?.published_count ?? 0}</p>
 				</article>
 				<article className="metric-item">
-					<p className="caption">Failed (current stream)</p>
-					<p className="metric-value">{status?.failed_count ?? 0}</p>
-				</article>
-				<article className="metric-item">
-					<p className="caption">Processed (consumer)</p>
+					<p className="caption">Events processed</p>
 					<p className="metric-value">{pipeline?.events_processed ?? 0}</p>
 				</article>
 				<article className="metric-item">
-					<p className="caption">Ingestion failures</p>
-					<p className="metric-value">{pipeline?.ingestion_failures ?? 0}</p>
-				</article>
-				<article className="metric-item">
-					<p className="caption">Last event id</p>
-					<p className="metric-value metric-small">{status?.last_event_id || "n/a"}</p>
+					<p className="caption">Failed events</p>
+					<p className="metric-value">{(status?.failed_count ?? 0) + (pipeline?.ingestion_failures ?? 0)}</p>
 				</article>
 			</section>
 
 			<section className="surface stack-gap">
-				<h2>Live status</h2>
-				<p className="caption">CSV source: {status?.source_path || "simulator/operational_events.csv"}</p>
-				<p className="caption">
-					interval={status?.interval_seconds ?? intervalSeconds}s · loop={String(status?.loop ?? loop)} · max_events=
-					{status?.max_events ?? "none"}
-				</p>
-				{status?.last_error && <p className="error-text">Last stream error: {status.last_error}</p>}
+				<div className="row-between">
+					<h2>Recently published events</h2>
+					<p className="caption">From active simulator stream and recent demo bursts.</p>
+				</div>
+				{recentPublished.length === 0 && <p className="muted">No published events observed yet.</p>}
+				<div className="feed-list">
+					{recentPublished.map((event) => (
+						<article
+							className="feed-item"
+							key={event.event_id}
+						>
+							<div className="feed-head">
+								<p>
+									<strong>{event.entity_id}</strong> · {event.event_type}
+								</p>
+								<span className={`chip ${event.ingestion_status === "indexed_with_embedding" ? "chip-live" : ""}`}>
+									{event.ingestion_status}
+								</span>
+							</div>
+							{event.description && <p>{event.description}</p>}
+							<div className="row">
+								{event.status && <span className="caption">{String(event.status).replaceAll("_", " ")}</span>}
+								{event.service && <span className="caption">{event.service}</span>}
+								{event.severity && <span className="caption">severity {event.severity}</span>}
+							</div>
+							<p className="caption">{event.event_time || event.timestamp}</p>
+						</article>
+					))}
+				</div>
 			</section>
 		</div>
 	);
