@@ -230,3 +230,61 @@ def test_events_recent_returns_combined_feed_sorted_desc(monkeypatch):
 	assert len(items) == 2
 	assert items[0]["timestamp"] >= items[1]["timestamp"]
 	assert items[0]["kind"] == "knowledge_version"
+
+
+def test_events_pipeline_returns_503_when_database_is_unavailable(monkeypatch):
+	monkeypatch.setattr(events_router, "SessionLocal", _broken_session_factory)
+	app.dependency_overrides[require_auth] = lambda: "demo@example.com"
+	client = TestClient(app)
+
+	try:
+		response = client.get("/api/events/pipeline")
+	finally:
+		app.dependency_overrides.clear()
+
+	assert response.status_code == 503
+	assert "Database unavailable while reading the event pipeline" in response.json()["detail"]
+
+
+class _EmptyPipelineSession:
+	def scalars(self, *_args, **_kwargs):
+		return []
+
+	def scalar(self, *_args, **_kwargs):
+		return 0
+
+	def execute(self, *_args, **_kwargs):
+		raise AssertionError("no raw events, so versions must not be queried")
+
+	def close(self):
+		return None
+
+
+def test_events_pipeline_reports_published_event_not_yet_persisted(monkeypatch):
+	published = {
+		"event_id": "evt-in-flight",
+		"event_type": "incident_created",
+		"entity_id": "INC-4242",
+		"event_time": "2026-11-28T06:00:00Z",
+		"source": "simulator-ui",
+		"payload": {"status": "investigating"},
+	}
+	monkeypatch.setattr(events_router, "SessionLocal", lambda: _EmptyPipelineSession())
+	monkeypatch.setattr(events_router, "PUBLISH_LOG", [{"event": published, "published_at": datetime(2026, 11, 28, 6, 0, tzinfo=timezone.utc)}])
+	app.dependency_overrides[require_auth] = lambda: "demo@example.com"
+	client = TestClient(app)
+
+	try:
+		response = client.get("/api/events/pipeline")
+	finally:
+		app.dependency_overrides.clear()
+
+	assert response.status_code == 200
+	body = response.json()
+	assert len(body["events"]) == 1
+	event = body["events"][0]
+	assert event["event_id"] == "evt-in-flight"
+	assert event["stage"] == "published"
+	assert event["ingested_at"] is None
+	assert event["duplicate"] is False
+	assert body["counts"] == {"raw_events": 0, "versions": 0, "indexed_versions": 0, "awaiting_index": 0}

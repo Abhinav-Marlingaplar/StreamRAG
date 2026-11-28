@@ -1,15 +1,17 @@
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import SQLAlchemyError
 
 from ..dependencies import require_auth
 from ..db import SessionLocal
 from ..models import KnowledgeVersion, RawEvent
+from .simulator import PUBLISH_LOG
 
 
 router = APIRouter(prefix="/api/events", tags=["events"])
@@ -115,3 +117,176 @@ def get_recent_events(
 		)
 	finally:
 		session.close()
+
+
+class PipelineVersion(BaseModel):
+	id: int
+	version: int
+	status: str
+	valid_from: datetime
+	valid_to: datetime | None
+	is_current: bool
+	indexed: bool
+
+
+class PipelineEvent(BaseModel):
+	event_id: str
+	event_type: str
+	entity_id: str
+	event_time: datetime
+	source: str
+	payload: dict[str, Any]
+	published_at: datetime | None = None
+	last_published_at: datetime | None = None
+	publish_count: int = 0
+	ingested_at: datetime | None = None
+	stage: Literal["published", "persisted", "indexed"]
+	duplicate: bool = False
+	version: PipelineVersion | None = None
+
+
+class PipelineCounts(BaseModel):
+	raw_events: int
+	versions: int
+	indexed_versions: int
+	awaiting_index: int
+
+
+class PipelineResponse(BaseModel):
+	events: list[PipelineEvent]
+	counts: PipelineCounts
+	server_time: datetime
+
+
+# Broker-ack time comes from this process's publish log; DB timestamps come from PostgreSQL.
+DUPLICATE_TOLERANCE = timedelta(seconds=2)
+
+
+@router.get("/pipeline", response_model=PipelineResponse)
+def get_pipeline_events(
+	limit: int = Query(default=60, ge=1, le=200),
+	_: str = Depends(require_auth),
+) -> PipelineResponse:
+	published: dict[str, dict[str, Any]] = {}
+	for entry in list(PUBLISH_LOG):
+		event = entry["event"]
+		record = published.setdefault(
+			event["event_id"],
+			{"event": event, "first": entry["published_at"], "last": entry["published_at"], "count": 0},
+		)
+		record["event"] = event
+		record["last"] = entry["published_at"]
+		record["count"] += 1
+
+	session = SessionLocal()
+	try:
+		recent_raw = session.scalars(
+			select(RawEvent).order_by(RawEvent.ingested_at.desc()).limit(limit)
+		).all()
+		raw_by_id = {row.event_id: row for row in recent_raw}
+		missing_ids = [event_id for event_id in published if event_id not in raw_by_id]
+		if missing_ids:
+			for row in session.scalars(select(RawEvent).where(RawEvent.event_id.in_(missing_ids))):
+				raw_by_id[row.event_id] = row
+
+		version_by_event_id: dict[str, Any] = {}
+		if raw_by_id:
+			version_rows = session.execute(
+				select(
+					KnowledgeVersion.id,
+					KnowledgeVersion.version,
+					KnowledgeVersion.status,
+					KnowledgeVersion.valid_from,
+					KnowledgeVersion.valid_to,
+					KnowledgeVersion.source_event_id,
+					KnowledgeVersion.embedding.is_not(None).label("indexed"),
+				).where(KnowledgeVersion.source_event_id.in_(list(raw_by_id)))
+			).all()
+			version_by_event_id = {row.source_event_id: row for row in version_rows}
+
+		raw_total = session.scalar(select(func.count()).select_from(RawEvent)) or 0
+		version_total = session.scalar(select(func.count(KnowledgeVersion.id))) or 0
+		indexed_total = (
+			session.scalar(
+				select(func.count(KnowledgeVersion.id)).where(KnowledgeVersion.embedding.is_not(None))
+			)
+			or 0
+		)
+	except SQLAlchemyError:
+		raise HTTPException(
+			status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+			detail="Database unavailable while reading the event pipeline. Please retry shortly.",
+		)
+	finally:
+		session.close()
+
+	items: list[PipelineEvent] = []
+	for event_id in set(raw_by_id) | set(published):
+		raw = raw_by_id.get(event_id)
+		record = published.get(event_id)
+		version_row = version_by_event_id.get(event_id)
+		version = (
+			PipelineVersion(
+				id=version_row.id,
+				version=version_row.version,
+				status=version_row.status,
+				valid_from=version_row.valid_from,
+				valid_to=version_row.valid_to,
+				is_current=version_row.valid_to is None,
+				indexed=bool(version_row.indexed),
+			)
+			if version_row is not None
+			else None
+		)
+		if raw is not None:
+			stage = "indexed" if version is not None and version.indexed else "persisted"
+			body = {
+				"event_type": raw.event_type,
+				"entity_id": raw.entity_id,
+				"event_time": raw.event_time,
+				"source": raw.source,
+				"payload": raw.payload if isinstance(raw.payload, dict) else {},
+			}
+		else:
+			stage = "published"
+			event = record["event"]
+			body = {
+				"event_type": event["event_type"],
+				"entity_id": event["entity_id"],
+				"event_time": event["event_time"],
+				"source": event["source"],
+				"payload": event["payload"],
+			}
+		first_published = record["first"] if record else None
+		items.append(
+			PipelineEvent(
+				event_id=event_id,
+				published_at=first_published,
+				last_published_at=record["last"] if record else None,
+				publish_count=record["count"] if record else 0,
+				ingested_at=raw.ingested_at if raw is not None else None,
+				stage=stage,
+				duplicate=bool(
+					raw is not None
+					and first_published is not None
+					and raw.ingested_at < first_published - DUPLICATE_TOLERANCE
+				),
+				version=version,
+				**body,
+			)
+		)
+
+	def entered_at(item: PipelineEvent) -> datetime:
+		return item.published_at or item.ingested_at
+
+	items.sort(key=entered_at, reverse=True)
+	return PipelineResponse(
+		events=items[:limit],
+		counts=PipelineCounts(
+			raw_events=int(raw_total),
+			versions=int(version_total),
+			indexed_versions=int(indexed_total),
+			awaiting_index=max(int(version_total) - int(indexed_total), 0),
+		),
+		server_time=datetime.now(timezone.utc),
+	)

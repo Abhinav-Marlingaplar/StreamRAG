@@ -4,6 +4,7 @@ import asyncio
 import csv
 import json
 import os
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -26,6 +27,15 @@ CSV_SCENARIO_PATH = SIMULATOR_DIR / "operational_events.csv"
 
 router = APIRouter(prefix="/api/simulator", tags=["simulator"])
 
+# Bounded, in-memory record of events this API process has published to Kafka (broker-acknowledged).
+# It lets the Event Stream view show events that are in flight before the worker has persisted them.
+PUBLISH_LOG_SIZE = 300
+PUBLISH_LOG: deque[dict[str, Any]] = deque(maxlen=PUBLISH_LOG_SIZE)
+
+
+def record_published(event: dict[str, Any]) -> None:
+	PUBLISH_LOG.append({"event": event, "published_at": datetime.now(timezone.utc)})
+
 
 class SimulatorPublishRequest(BaseModel):
 	run_demo: bool = False
@@ -40,6 +50,7 @@ class SimulatorPublishRequest(BaseModel):
 class SimulatorPublishResponse(BaseModel):
 	published_count: int
 	topic: str
+	event_ids: list[str] = []
 
 
 class StreamStartRequest(BaseModel):
@@ -239,6 +250,7 @@ async def _publish_events(events: list[dict[str, Any]]) -> int:
 		await producer.start()
 		for event in events:
 			await producer.send_and_wait(TOPIC, event)
+			record_published(event)
 			published_count += 1
 		return published_count
 	finally:
@@ -262,6 +274,7 @@ async def _stream_events_loop(events: list[dict[str, Any]], request: StreamStart
 					break
 				try:
 					await producer.send_and_wait(TOPIC, event)
+					record_published(event)
 					published_total += 1
 					increment_simulator_published()
 					STREAM_STATE.published_count = published_total
@@ -295,7 +308,11 @@ async def publish_events(
 	except Exception:
 		increment_ingestion_failures()
 		raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Kafka publish failed")
-	return SimulatorPublishResponse(published_count=published_count, topic=TOPIC)
+	return SimulatorPublishResponse(
+		published_count=published_count,
+		topic=TOPIC,
+		event_ids=[event["event_id"] for event in events],
+	)
 
 
 @router.post("/stream/start", response_model=StreamControlResponse)

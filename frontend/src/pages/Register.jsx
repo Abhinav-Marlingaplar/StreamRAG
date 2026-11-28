@@ -1,6 +1,9 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
+import AuthLayout from "../app/AuthLayout";
+import { Button, ErrorBanner, Notice } from "../app/ui";
 import { registerUser } from "../lib/api";
+import { errorMessage } from "../lib/format";
 
 export default function Register() {
 	const navigate = useNavigate();
@@ -16,55 +19,62 @@ export default function Register() {
 		setLoading(true);
 		try {
 			await registerUser(form);
-			setSuccess("Account created. Redirecting to sign in...");
+			setSuccess("Account created. Redirecting to sign in…");
 			setTimeout(() => navigate("/login"), 900);
 		} catch (err) {
-			setError(err.response?.data?.detail || "Registration failed. Try a different email.");
+			setError(errorMessage(err, "Registration failed. Try a different email."));
 		} finally {
 			setLoading(false);
 		}
 	};
 
 	return (
-		<div className="auth-wrap">
+		<AuthLayout
+			footer={
+				<>
+					Already have an account? <Link to="/login">Sign in</Link>
+				</>
+			}
+			subtitle="Create an account to explore the pipeline."
+			title="Create your account"
+		>
 			<form
-				className="auth-card glass-panel"
+				className="ap-form"
 				onSubmit={onSubmit}
 			>
-				<h1>Create account</h1>
-				<p className="muted">Launch your local StreamRAG workspace.</p>
-				<input
-					className="input"
-					onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
-					placeholder="Email"
-					required
-					type="email"
-					value={form.email}
-				/>
-				<input
-					className="input"
-					onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
-					placeholder="Password"
-					required
-					type="password"
-					value={form.password}
-				/>
-				{error && <p className="error-text">{error}</p>}
-				{success && <p className="success-text">{success}</p>}
-				<button
-					className="btn btn-primary"
+				<label className="ap-field">
+					<span className="ap-field-label">Email</span>
+					<input
+						autoComplete="email"
+						className="ap-input"
+						onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))}
+						required
+						type="email"
+						value={form.email}
+					/>
+				</label>
+				<label className="ap-field">
+					<span className="ap-field-label">Password</span>
+					<input
+						autoComplete="new-password"
+						className="ap-input"
+						onChange={(event) => setForm((prev) => ({ ...prev, password: event.target.value }))}
+						required
+						type="password"
+						value={form.password}
+					/>
+				</label>
+				<ErrorBanner message={error} />
+				<Notice tone="success">{success}</Notice>
+				<Button
+					className="is-block"
 					disabled={loading}
 					type="submit"
+					variant="primary"
 				>
-					{loading ? "Creating..." : "Create Account"}
-				</button>
-				<p className="muted">
-					Already have an account?{" "}
-					<Link to="/login">
-						Sign in
-					</Link>
-				</p>
+					{loading ? "Creating account…" : "Create account"}
+				</Button>
 			</form>
-		</div>
+		</AuthLayout>
 	);
 }

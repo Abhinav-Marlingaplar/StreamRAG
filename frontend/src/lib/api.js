@@ -16,6 +16,19 @@ api.interceptors.request.use((config) => {
 	return config;
 });
 
+api.interceptors.response.use(
+	(response) => response,
+	(error) => {
+		const url = error.config?.url || "";
+		const isAuthCall = url.startsWith("/auth/");
+		if (error.response?.status === 401 && !isAuthCall && localStorage.getItem(TOKEN_KEY)) {
+			localStorage.removeItem(TOKEN_KEY);
+			window.location.assign("/login");
+		}
+		return Promise.reject(error);
+	}
+);
+
 export function setAuthToken(token) {
 	localStorage.setItem(TOKEN_KEY, token);
 }
@@ -43,8 +56,8 @@ export async function queryIncident(payload) {
 	return data;
 }
 
-export async function fetchRecentEvents(limit = 20) {
-	const { data } = await api.get(`/api/events/recent?limit=${limit}`);
+export async function fetchPipeline(limit = 80) {
+	const { data } = await api.get(`/api/events/pipeline?limit=${limit}`);
 	return data;
 }
 

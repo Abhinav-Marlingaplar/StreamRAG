@@ -16,7 +16,7 @@ The product strategy is intentionally split into two parts:
 - Temporal-Aware Adaptive Retrieval (TAR) with dynamic gating on top of pgvector
 - RAG answers with citations and historical “as-of” correctness
 - Practical, reproducible local setup for reviewers and users
-- Cohesive three-surface UX: Overview, Intelligence, and Event Simulator
+- Cohesive four-surface UX: Overview (health), Event Stream (live pipeline, per-event inspection), Intelligence (temporal queries with evidence), and Event Simulator
 
 ---
 
